@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { FormData, Language, InstitutionType, Tone } from "../types";
 
@@ -7,7 +6,9 @@ import { FormData, Language, InstitutionType, Tone } from "../types";
  * Adheres to strict formatting rules for Government, NGO, and Private institutions.
  */
 export const generateCoverLetter = async (data: FormData, language: Language): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Always initialize with the latest API key from environment
+  // The global window.process shim ensures this doesn't throw if undefined
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
   // Format the date based on language
   const today = new Date().toLocaleDateString(language === Language.EN ? 'en-GB' : 'sw-TZ', {
@@ -78,7 +79,7 @@ export const generateCoverLetter = async (data: FormData, language: Language): P
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
         systemInstruction,
@@ -89,12 +90,24 @@ export const generateCoverLetter = async (data: FormData, language: Language): P
     const text = response.text;
     if (!text) throw new Error("Empty response from AI");
 
-    return text.replace(/^(Here is|Sure|I've generated).*\n/i, '').replace(/```.*?\n/g, '').replace(/```/g, '').trim();
+    // Clean up any stray AI commentary that might have leaked through
+    return text.replace(/^(Here is|Sure|I've generated).*\n/i, '')
+               .replace(/```.*?\n/g, '')
+               .replace(/```/g, '')
+               .trim();
     
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Generation Error:", error);
-    throw new Error(language === Language.EN 
-      ? "Connection to AI service failed. Please try again." 
-      : "Muunganisho na huduma ya AI umefeli. Tafadhali jaribu tena.");
+    
+    // Check for specific API Key error
+    if (error?.message?.includes('API_KEY') || error?.status === 403) {
+        throw new Error(isEnglish 
+            ? "API Configuration error. Please ensure the API_KEY environment variable is correctly set in your Netlify dashboard." 
+            : "Hitilafu ya usanidi wa API. Tafadhali hakikisha variable ya API_KEY imewekwa vizuri kwenye dashibodi yako ya Netlify.");
+    }
+
+    throw new Error(isEnglish 
+      ? "Connection to AI service failed. Please check your internet or try again later." 
+      : "Muunganisho na huduma ya AI umefeli. Tafadhali kagua intaneti yako au jaribu tena baadaye.");
   }
 };
